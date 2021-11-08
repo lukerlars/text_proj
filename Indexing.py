@@ -4,33 +4,45 @@ from typing import Callable, Dict, List, Set, Tuple
 import math
 import numpy as np
 from elasticsearch import Elasticsearch
+from tqdm import tqdm
+
+
+
+INDEX_SETTINGS = {
+    "mappings": {
+        "properties":{
+            "body": {"type": "text", "term_vector": "yes", "analyzer": "english"},
+        }      
+    } 
+}
+
+def reset_index(es: Elasticsearch) -> None:
+    """Clears index"""
+    if es.indices.exists(index =index_name):
+        es.indices.delete(index=index_name)
+
+    es.indices.create(index=index_name, body=INDEX_SETTINGS)
 
 
 
 def index_documents(filepath: str, es: Elasticsearch, index: str) -> None:
     """Indexes documents from file."""
     bulk_data = []
-    cnt_passage =0
-
+   
     file = open(filepath, encoding="utf8")
     read_tsv=csv.reader(file, delimiter="\t")
     print("Indexing as began...")
-    
-    
-    for passage in read_tsv:
-        cnt_passage+=1
-        if cnt_passage==1:
-            print(passage)
-        
-        print("Indexing in progress", cnt_passage*100/8841823 , "%")
-        
+    count =1
+    for passage in tqdm(read_tsv):
         bulk_data.append(
-            {"index": {"_index": index, "_id": passage[0:int(len(passage[0])/4)]}}
+            {"index": {"_index": index, "_id": passage[0]}}
         )
         bulk_data.append({"body":passage[1]})
-    
-    
-    es.bulk(index=index, body=bulk_data, refresh=True)
+
+        if count % 1001 == 0:
+            es.bulk(index=index, body=bulk_data)
+            bulk_data =[]
+        count += 1
     print("Indexing Finished.")
 
 def analyze_query(
@@ -101,8 +113,12 @@ def load_queries(filepath: str) -> Dict[str, str]:
     return d
 
 if __name__ == "__main__":
-    index_name = "_myindex"
+    index_name = "a_index"
     es = Elasticsearch(timeout=120)
 
-    index_documents("collection.tsv", es,index=index_name)
+    # reset_index(es)
+    # index_documents("data/collection.tsv", es,index=index_name)
 
+    tv = es.termvectors(index=index_name, id = '2000')
+    print(tv['term_vectors']['body']['terms'].keys())
+    
